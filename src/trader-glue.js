@@ -325,7 +325,7 @@ function traderInstall(ctx) {
         for (let k = 0; k < NKIND; k++) t(T_ID0 + k).writeS32(0);
         saved = JSON.stringify(pts()); return;
       }
-      const hist = b => [0, 1, 2, 3, 4].map(i => t(b + i).readS32());   // ranks: normal, relic, green, blue, purple
+      const hist = b => [0, 1, 2, 3, 4].map(i => t(b + i).readS32());   // colors: white, yellow, green, blue, purple
       V2.status.addons.trader.magicFind = { step: t(T_MFSTEP).readS32(), extraRolls: t(T_MFROLLS).readS32(), better: t(T_MFWINS).readS32(),
         firstRoll: hist(44), kept: hist(49) };
       const now = JSON.stringify(pts());
