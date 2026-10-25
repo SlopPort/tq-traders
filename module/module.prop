@@ -1,6 +1,6 @@
 id=tq_traders
 name=TQ Traders & Respec (unofficial)
-version=1.0
-versionCode=1
+version=1.3
+versionCode=4
 author=tq-android-perf contributors
 description=Titan Quest (Android, arm64): summon green (gold), blue and purple (paid with items of that color) traders with items up to your level, restock any merchant, reset skills (choose masteries again) and attributes. Menu: Perf (with tq-android-perf) or Mods button. Works alone or as an add-on of tq-android-perf (one injection either way).

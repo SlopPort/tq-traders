@@ -1,22 +1,32 @@
-// ---- traders add-on (trader.c): green (gold), blue and purple (paid with items of that color sold to the trader)
-// merchants with items up to your level, and a Restock button in every trade window. Appended after the overlay core (tq-android-perf's
+// ---- traders add-on (trader.c): green (gold), blue, purple, lesser/greater/divine artifact and relic traders (paid
+// with items of the same kind sold to the trader) with items up to your level, a Restock button in every trade window,
+// skill/attribute resets and magic find bought with gold. Appended after the overlay core (tq-android-perf's
 // patch.js, or the standalone build); registers itself in OVERLAY_ADDONS.
 // The item list is built on the device from the game's own database: every weapon/armor/jewelry record is created
 // once as a throwaway item to read its classification and level requirement; the result is cached per game build.
-const TS_MSG = 128;
-const T_ON = 0, T_REQKIND = 2, T_MKT = 3, T_FILLKIND = 6, T_BUSY = 7, T_MSGF = 8, T_ADDING = 9, T_SUMMON = 12, T_SUMKIND = 13,
-  T_BASEID = 14, T_FRAMES = 15, T_ID0 = 16, T_PTS0 = 19, T_COST = 22, T_PCT = 23, T_CLIENT = 24, T_FILL = 5;
-const KIND_CLASS = [2, 3, 4];                              // Item::GetItemClassification: 2 green, 3 blue, 4 purple
+const TS_MSG = 256;
+const T_ON = 0, T_REQKIND = 2, T_MKT = 3, T_FILL = 5, T_FILLKIND = 6, T_BUSY = 7, T_MSGF = 8, T_ADDING = 9, T_SUMMON = 12,
+  T_SUMKIND = 13, T_BASEID = 14, T_FRAMES = 15, T_COST = 16, T_PCT = 17, T_CLIENT = 20, T_ID0 = 22, T_PTS0 = 29, T_ARTOFF = 36,
+  T_MFSTEP = 38, T_MFROLLS = 41, T_MFWINS = 42;
+const NKIND = 7;
+const MF_MAX = 15, MF_STEP_COST = 100000;                 // step n (1.0x + 0.1x * n) costs n * 100k gold
+// pool class of each trader kind: Item::GetItemClassification 2 green, 3 blue, 4 purple; 10 + tier for artifacts
+const KIND_CLASS = [2, 3, 4, 10, 11, 12, 20];             // 20: complete relics and charms
+const KIND_KEYS = [null, 'blue', 'purple', 'lesser', 'greater', 'divine', 'relics'];   // points file
+const RELIC_DONE_OFFSET = 0x678;                          // ItemRelic: level at which it is complete
+const RELIC_BONUS_TABLE = 0xa10;                          // ItemRelic: std::string, completion bonus table
+const ARTIFACT_TIER_OFFSET = 0xab0;                       // ItemArtifact: 0 lesser, 1 greater, 2 divine (set in Load)
 // development and joke records that no player can find (sandbox, dev/test items, costume 'z_' items, cut content)
-const TRADER_SKIP = /sandbox|devcheat|devitem|\/dev\/|\/test|test_|\/out\/|\/old\/|\/z_|dummy|\/default\/|copy of|pieces_/;
+const TRADER_SKIP = /sandbox|soundtest|devcheat|devitem|\/dev\/|\/test|test_|\/out\/|\/old\/|\/z_|dummy|\/default\/|copy of|pieces_/;
 const TRADER_CFG = V2_CACHE + 'tq-trader.json';
 const TRADER_COST = 5;                                    // points (items of the trader's color sold) per shop item
-const TRADER_TABS = { 1: 20, 2: 20, 3: 26, 4: 40 };       // items per market tab: melee, ranged/staff, armor, jewelry
+const TRADER_TABS = { 1: 20, 2: 20, 3: 26, 4: 40, 5: 18, 6: 30 };   // per group: melee, ranged/staff, armor, jewelry, artifacts, relics
 const TRADER_CLASSES = {
   WeaponMelee_Sword: 1, WeaponMelee_Axe: 1, WeaponMelee_Mace: 1,
   WeaponHunting_Bow: 2, WeaponHunting_Spear: 2, WeaponMagical_Staff: 2, WeaponHunting_RangedOneHand: 2,
   ArmorProtective_Head: 3, ArmorProtective_UpperBody: 3, ArmorProtective_Forearm: 3, ArmorProtective_LowerBody: 3, WeaponArmor_Shield: 3,
-  ArmorJewelry_Ring: 4, ArmorJewelry_Amulet: 4,
+  ArmorJewelry_Ring: 4, ArmorJewelry_Amulet: 4, ItemArtifact: 5, ItemRelic: 6, ItemCharm: 6,
+  ItemArtifactFormula: 7,                                 // not sold: maps each artifact to its formula (bonus table)
 };
 // Merchant records used for the trader's looks (one per model; the name and look come from the record).
 const TRADER_LOOKS = [
@@ -29,7 +39,7 @@ const TRADER_LOOKS = [
   'records/xpack3/creatures/npc/merchant/merchant_tartarus.dbr',
 ];
 const TRADER_EXTERNS = ['o_sellcost', 'o_afford', 'o_buycost', 'o_getsack', 'o_addmini', 'o_addstatic', 'o_refresh', 'o_srvrefresh',
-  'o_preq', 'o_preqinv', 'o_preqeq', 'o_submoney', 'o_sale', 'm_isused', 'm_omget', 'm_getitem', 'm_itemclass', 'trader_cb'];
+  'o_preq', 'o_preqinv', 'o_preqeq', 'o_submoney', 'o_sale', 'm_isused', 'm_omget', 'm_getitem', 'm_itemclass', 'm_artifact', 'm_relic', 'm_relicdone', 'o_lootdyn', 'o_lootfix', 'o_lootmaster', 'o_lootloader', 'm_loadtable', 'mf_keys', 'mf_rank', 'trader_cb'];
 OVERLAY_ADDONS.push({ name: 'trader', install: traderInstall });
 
 function traderInstall(ctx) {
@@ -53,6 +63,16 @@ function traderInstall(ctx) {
     forceRefresh: fn('_ZN4GAME10GameEngine18ForceMarketRefreshEj', 'void', ['pointer', 'uint']),
     dbArchive: fn('_ZN4GAME6Engine18GetDatabaseArchiveEv', 'pointer', ['pointer']),
     fileName: fn('_ZNK4GAME9StringMap11GetFileNameEi', 'pointer', ['pointer', 'int']),
+    artifact: fn('_ZN4GAME11DynamicCastINS_12ItemArtifactENS_4ItemEEEPT_PT0_', 'pointer', ['pointer']),
+    relic: fn('_ZN4GAME11DynamicCastINS_9ItemRelicENS_4ItemEEEPT_PT0_', 'pointer', ['pointer']),
+    artifactInfo: fn('_ZN4GAME19ItemArtifactFormula15GetArtifactInfoERNS_15ItemReplicaInfoE', 'void', ['pointer', 'pointer']),
+    rtCtor: fn('_ZN4GAME19LootRandomizerTableC1Ev', 'void', ['pointer']),
+    rtDtor: fn('_ZN4GAME19LootRandomizerTableD1Ev', 'void', ['pointer']),
+    rtLoad: fn('_ZN4GAME19LootRandomizerTable10ManualLoadERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE', 'void', ['pointer', 'pointer']),
+    rtPick: fn('_ZNK4GAME19LootRandomizerTable17GetRandomizerNameERNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS_13RandomUniformE', 'void', ['pointer', 'pointer', 'pointer']),
+    randomGen: fn('_ZN4GAME10GameEngine12GetRandomGenEv', 'pointer', ['pointer']),
+    money: fn('_ZNK4GAME9Character15GetCurrentMoneyEv', 'uint', ['pointer']),
+    subMoney: fn('_ZN4GAME9Character13SubtractMoneyEj', 'void', ['pointer', 'uint']),
     // respec
     isMastery: fn('_ZNK4GAME5Skill22IsSkillTheMasterySkillEv', 'bool', ['pointer']),
     skillLevel: fn('_ZNK4GAME5Skill13GetSkillLevelEv', 'uint', ['pointer']),
@@ -82,6 +102,10 @@ function traderInstall(ctx) {
     ['_ZN4GAME12MarketClient26PlayerPurchaseRequestEquipEj21EquipmentCtrlLocation', 'h_preqeq', 'o_preqeq'],
     ['_ZN4GAME9Character13SubtractMoneyEj', 'h_submoney', 'o_submoney'],
     ['_ZN4GAME12MarketClient17PlayerSaleRequestEjb', 'h_sale', 'o_sale'],
+    ['_ZN4GAME23LootItemTable_DynWeight11GetLootNameERNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES8_S8_RNS_13RandomUniformERi', 'h_lootdyn', 'o_lootdyn'],
+    ['_ZN4GAME25LootItemTable_FixedWeight11GetLootNameERNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES8_S8_RNS_13RandomUniformERi', 'h_lootfix', 'o_lootfix'],
+    ['_ZNK4GAME10LootLoader11GetLootNameERNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES8_S8_RNS_13RandomUniformE', 'h_lootloader', 'o_lootloader'],
+    ['_ZN4GAME15LootMasterTable11GetLootNameERNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES8_S8_RNS_13RandomUniformERi', 'h_lootmaster', 'o_lootmaster'],
   ];
   const targets = hooks.map(h => E(h[0]));                   // resolve everything before touching code
 
@@ -98,9 +122,14 @@ function traderInstall(ctx) {
   v.m_omget.writePointer(E('_ZN4GAME9SingletonINS_13ObjectManagerEE3GetEv'));
   v.m_getitem.writePointer(E('_ZN4GAME13ObjectManager9GetObjectINS_4ItemEEEPT_j'));
   v.m_itemclass.writePointer(E('_ZNK4GAME4Item21GetItemClassificationEv'));
+  v.m_artifact.writePointer(E('_ZN4GAME11DynamicCastINS_12ItemArtifactENS_4ItemEEEPT_PT0_'));
+  v.m_relic.writePointer(E('_ZN4GAME11DynamicCastINS_9ItemRelicENS_4ItemEEEPT_PT0_'));
+  v.m_relicdone.writePointer(E('_ZNK4GAME9ItemRelic10IsCompleteEv'));
+  v.m_loadtable.writePointer(E('_ZN4GAME13ObjectManager13LoadTableFileERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE'));
   const cm = new CModule(TRADER_C, v); held.push(cm);
   if (new NativeFunction(cm.ts_size, 'int', [])() > 4096) throw Error('trader state too large');
   const ts = v.ts, t = i => ts.add(i * 4);
+  V2.traderTs = ts;                                          // diagnostics
   const msg = s => { ts.add(TS_MSG).writeUtf8String(s.slice(0, 63)); t(T_MSGF).writeS32(t(T_FRAMES).readS32()); };
 
   // ---- item pool: [record, tab, level requirement] of every blue item, built on the device and cached per build
@@ -109,8 +138,17 @@ function traderInstall(ctx) {
   const cstr = s => strs[s] || (strs[s] = Memory.allocUtf8String(s));
   const replica = (rec, seed) => { f.riCtor(ri); f.assign(ri.add(8), cstr(rec)); ri.add(0x80).writeU32(seed); return ri; };
   const poolFile = V2_CACHE + 'tq-trader-items-' + ctx.buildId + '.json';
-  let pool = null, queue = null, total = 0, found = [], wantSummon = null;
-  try { const c = JSON.parse(File.readAllText(poolFile)); if (c.v === 2 && c.items.length) pool = c.items; } catch (e) {}
+  let pool = null, queue = null, total = 0, found = [], wantSummon = null, formulaOf = {}, foundFormulas = {};
+  const ri2 = Memory.alloc(0x100), rtab = Memory.alloc(0x200), tstr = Memory.alloc(24);
+  held.push(ri2, rtab, tstr); f.riCtor(ri2); tstr.writeByteArray(new Uint8Array(24));
+  const readStd = q => { const b0 = q.readU8(); return (b0 & 1) ? q.add(16).readPointer().readUtf8String(q.add(8).readU64().toNumber()) : q.add(1).readUtf8String(b0 >> 1); };
+  // completion bonus of a relic/charm, picked from its bonus table the way the game does when a relic is completed
+  function rollBonus(table, out) {
+    f.assign(tstr, cstr(table));
+    f.rtCtor(rtab);
+    try { f.rtLoad(rtab, tstr); f.rtPick(rtab, out, f.randomGen(engine())); } finally { f.rtDtor(rtab); }
+  }
+  try { const c = JSON.parse(File.readAllText(poolFile)); if (c.v === 5 && c.items.length) { pool = c.items; formulaOf = c.formulas || {}; } } catch (e) {}
   // weapon/armor/jewelry records from the database archive (DatabaseArchive: header-entry list at +0x58, names in
   // the StringMap at +0x70; entry: name index at +0, class std::string at +8)
   function candidates() {
@@ -132,33 +170,62 @@ function traderInstall(ctx) {
       const [rec, tab] = queue.pop();
       const it = f.createItem(replica(rec, 1));
       if (it.isNull()) continue;
-      const cls = f.itemClass(it);
-      if (cls >= 2 && cls <= 4) found.push([rec, tab, f.lvlReq(it), cls]);
+      let cls = f.itemClass(it);
+      if (tab === 7) {                                         // formula: remember which artifact it makes
+        f.artifactInfo(it, ri2);
+        const art = readStd(ri2.add(8));
+        if (art) foundFormulas[art.toLowerCase().split(String.fromCharCode(92)).join('/')] = rec;
+        f.destroy(f.omGet(), it, tag, 1);
+        continue;
+      }
+      let done = 0, bonus = '';
+      if (tab === 5) { const a = f.artifact(it), tier = a.isNull() ? -1 : a.add(ARTIFACT_TIER_OFFSET).readS32(); cls = tier >= 0 && tier <= 2 ? 10 + tier : -1; }
+      if (tab === 6) {
+        const r = f.relic(it);
+        done = r.isNull() ? 0 : r.add(RELIC_DONE_OFFSET).readU32(); cls = done > 0 && done < 100 ? 20 : -1;
+        if (cls === 20) bonus = readStd(r.add(RELIC_BONUS_TABLE)) || '';
+      }
+      if ((cls >= 2 && cls <= 4) || cls >= 10) found.push([rec, tab, f.lvlReq(it), cls, done, bonus]);
       f.destroy(f.omGet(), it, tag, 1);
     }
     t(T_PCT).writeS32(Math.floor(100 * (total - queue.length) / total));
     if (queue.length) return;
-    queue = null; pool = found; t(T_BUSY).writeS32(0);
-    try { const fl = new File(poolFile, 'w'); fl.write(JSON.stringify({ v: 2, items: pool })); fl.close(); } catch (e) {}
+    queue = null; pool = found; formulaOf = foundFormulas; t(T_BUSY).writeS32(0);
+    try { const fl = new File(poolFile, 'w'); fl.write(JSON.stringify({ v: 5, items: pool, formulas: formulaOf })); fl.close(); } catch (e) {}
     V2.status.addons.trader.items = pool.length;
     if (wantSummon !== null) { const k = wantSummon; wantSummon = null; summon(k); }
   }
 
   function fill(client, kind) {
     const p = player(); if (p.isNull() || !pool) return;
-    const lvl = f.charLevel(p), byTab = { 1: [], 2: [], 3: [], 4: [] }, cls = KIND_CLASS[kind];
-    for (const [rec, tab, req, c] of pool) if (c === cls && req <= lvl) byTab[tab].push(rec);
+    const lvl = f.charLevel(p), byTab = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }, cls = KIND_CLASS[kind], extra = {};
+    for (const [rec, tab, req, c, d, b] of pool) if (c === cls && req <= lvl) { byTab[tab].push(rec); extra[rec] = [d || 0, b || '']; }
+    let n = 0;
     t(T_ADDING).writeS32(1);
     try {
       for (const tab in byTab) {
         const c = byTab[tab];
         for (let i = 0; i < TRADER_TABS[tab] && c.length; i++) {
           const rec = c.splice(Math.floor(Math.random() * c.length), 1)[0];
-          f.addMini(client, 0, replica(rec, Math.floor(Math.random() * 0x7fff)));
+          const seed = Math.floor(Math.random() * 0x7fff);
+          let r = replica(rec, seed);
+          const [done, bonusTable] = extra[rec];
+          if (done) {                                               // relics: complete, with a completion bonus
+            r.add(0x84).writeU32(done);
+            if (bonusTable) rollBonus(bonusTable, r.add(0x68));
+          }
+          const formula = tab === '5' && formulaOf[rec.toLowerCase().split(String.fromCharCode(92)).join('/')];
+          if (formula) {                                            // artifacts: made by their formula, bonus included
+            const it = f.createItem(replica(formula, seed));
+            if (!it.isNull()) { f.artifactInfo(it, ri2); f.destroy(f.omGet(), it, tag, 1); r = ri2; }
+          }
+          f.addMini(client, 0, r);
           f.createMini(client);
+          n++;
         }
       }
     } finally { t(T_ADDING).writeS32(0); }
+    if (!n) msg('Nothing of this kind up to your level yet');
   }
   function summon(kind) {
     const g = gGame.readPointer();
@@ -198,6 +265,21 @@ function traderInstall(ctx) {
     msg(n ? n + ' attribute points returned' : 'No attribute points to return');
   }
 
+  // ---- magic find: trader.c caches the color of each record it sees (filled lazily from the game's records)
+  const mfKeys = Memory.alloc(16384 * 4), mfRank = Memory.alloc(16384);
+  held.push(mfKeys, mfRank);
+  mfKeys.writeByteArray(new Uint8Array(16384 * 4)); mfRank.writeByteArray(new Uint8Array(16384));
+  v.mf_keys.writePointer(mfKeys); v.mf_rank.writePointer(mfRank);
+  function buyMf() {
+    const p = player(), step = t(T_MFSTEP).readS32();
+    if (p.isNull() || step >= MF_MAX) return;
+    const cost = (step + 1) * MF_STEP_COST;
+    if (f.money(p) < cost) { msg('Not enough gold: ' + cost / 1000 + 'k needed'); return; }
+    f.subMoney(p, cost);
+    t(T_MFSTEP).writeS32(step + 1);
+    msg('Magic find is now ' + (1 + (step + 1) / 10).toFixed(1) + 'x');
+  }
+
   const cb = new NativeCallback(code => {
     try {
       if (code === 1) {
@@ -206,8 +288,12 @@ function traderInstall(ctx) {
         else { wantSummon = kind; t(T_BUSY).writeS32(2); }            // finish the item list first, faster
       } else if (code === 2) {
         const id = t(T_MKT).readU32();
-        const ours = [0, 1, 2].some(k => t(T_ID0 + k).readU32() === id);
+        let ours = false; for (let k = 0; k < NKIND; k++) if (t(T_ID0 + k).readU32() === id) ours = true;
         if (id) { f.forceRefresh(engine(), id); msg(ours ? 'New stock' : 'Restocked'); }
+      } else if (code === 6) {
+        buyMf();
+      } else if (code === 7) {                               // diagnostics: run a function set by another script
+        const dev = globalThis.DEV_FN; globalThis.DEV_FN = null; if (dev) V2.devResult = dev();
       } else if (code === 4 || code === 5) {
         if (!player().isNull()) (code === 4 ? resetSkills : resetStats)();
       } else if (code === 3) {
@@ -222,10 +308,10 @@ function traderInstall(ctx) {
 
   hooks.forEach((h, i) => Interceptor.replace(targets[i], cm[h[1]]));
 
-  // ---- points, per character (cache/tq-trader.json: { name: { blue, purple } })
+  // ---- points, per character (cache/tq-trader.json: { name: { blue, purple, lesser, greater, divine } })
   let cfg = {}; try { cfg = JSON.parse(File.readAllText(TRADER_CFG)); } catch (e) {}
   let who = null, saved = '';
-  const pts = () => ({ blue: t(T_PTS0 + 1).readS32(), purple: t(T_PTS0 + 2).readS32() });
+  const pts = () => { const o = { mf: t(T_MFSTEP).readS32() }; for (let k = 1; k < NKIND; k++) o[KIND_KEYS[k]] = t(T_PTS0 + k).readS32(); return o; };
   const nameOf = p => { const w = f.playerName(p); let s = ''; for (let i = 0; i < 40; i++) { const c = w.add(i * 4).readU32(); if (!c) break; s += String.fromCharCode(c); } return s; };
   setInterval(() => {
     try {
@@ -234,16 +320,21 @@ function traderInstall(ctx) {
       if (name !== who) {
         who = name;
         let c = cfg[who] || {}; if (typeof c === 'number') c = { blue: c };      // 2.2 stored blue points only
-        t(T_PTS0 + 1).writeS32(c.blue || 0); t(T_PTS0 + 2).writeS32(c.purple || 0);
-        for (let k = 0; k < 3; k++) t(T_ID0 + k).writeS32(0);
+        for (let k = 1; k < NKIND; k++) t(T_PTS0 + k).writeS32(c[KIND_KEYS[k]] || 0);
+        t(T_MFSTEP).writeS32(Math.min(MF_MAX, c.mf || 0));
+        for (let k = 0; k < NKIND; k++) t(T_ID0 + k).writeS32(0);
         saved = JSON.stringify(pts()); return;
       }
+      const hist = b => [0, 1, 2, 3, 4].map(i => t(b + i).readS32());   // ranks: normal, relic, green, blue, purple
+      V2.status.addons.trader.magicFind = { step: t(T_MFSTEP).readS32(), extraRolls: t(T_MFROLLS).readS32(), better: t(T_MFWINS).readS32(),
+        firstRoll: hist(44), kept: hist(49) };
       const now = JSON.stringify(pts());
       if (now !== saved) { saved = now; cfg[who] = pts(); const fl = new File(TRADER_CFG, 'w'); fl.write(JSON.stringify(cfg)); fl.close(); }
     } catch (e) {}
   }, 1000);
 
   t(T_COST).writeS32(TRADER_COST);
+  t(T_ARTOFF).writeS32(ARTIFACT_TIER_OFFSET);
   if (!pool) {                                                 // build the list in the background, 2 ms per frame
     queue = candidates(); total = queue.length; found = [];
     t(T_BUSY).writeS32(1);

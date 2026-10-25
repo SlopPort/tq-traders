@@ -20,7 +20,7 @@ ap.add_argument('--out', default=str(HERE.parent / 'module'))
 a = ap.parse_args()
 PERF = pathlib.Path(a.perf)
 OUT = pathlib.Path(a.out)
-VERSION, CODE = '1.0', 1
+VERSION, CODE = '1.3', 4
 
 perf = (PERF / 'module' / 'patch.js').read_text(encoding='utf-8')
 assert 'OVERLAY_ADDONS' in perf, 'tq-android-perf 2.3+ needed'

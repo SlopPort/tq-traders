@@ -15,7 +15,7 @@ FILES = ['module.prop', 'customize.sh', 'service.sh', 'tq-addon.js', 'standalone
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--injector', help='existing frida-inject binary for android-arm64')
-ap.add_argument('--out', default=str(HERE.parent / 'dist' / 'tq-traders-1.0.zip'))
+ap.add_argument('--out', default=str(HERE.parent / 'dist' / 'tq-traders-1.3.zip'))
 a = ap.parse_args()
 inj = pathlib.Path(a.injector).read_bytes() if a.injector else lzma.decompress(urllib.request.urlopen(URL).read())
 out = pathlib.Path(a.out)
