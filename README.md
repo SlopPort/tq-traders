@@ -10,7 +10,7 @@ An unofficial, open-source Magisk module for Titan Quest on Android (single-play
 
 ![Masteries](docs/masteries.jpg)
 
-**[Download v1.3 from GitHub Releases](https://github.com/SlopPort/tq-traders/releases/latest)**
+**[Download v1.4 from GitHub Releases](https://github.com/SlopPort/tq-traders/releases/latest)**
 
 ## What it does
 
@@ -51,7 +51,7 @@ This is an experimental fan-made modification for single-player use. Use it at y
 
 | | |
 |---|---|
-| **Tested** | Titan Quest for Android **3.0.5339**, arm64, on a Redmi Note 8 (Snapdragon 665) with Magisk |
+| **Tested** | Titan Quest for Android **3.0.5339** (and 3.0.5364 with Titan Quest Mods), arm64, on a Redmi Note 8 (Snapdragon 665) with Magisk |
 | **Expected to work, untested** | Other arm64 builds of the game. Functions are found by their exported names at runtime. A few object layouts are fixed and checked before use (see Limitations). |
 | **Not supported** | The 32-bit (armeabi-v7a) build, the PC version, phones without root |
 
@@ -158,23 +158,22 @@ The module ships no game data. The first time it runs on a game build, it builds
 
 - This runs in the background and takes a few minutes, at a small FPS cost.
 - If you summon a trader before it's finished, the list is built faster and the menu shows a progress bar ("Preparing the item list: ...%"). The trader appears when it's done.
-- The result is cached per game build, so later launches are instant. When a new version of this module changes the list format, the list is rebuilt once (this is the case when updating from 1.0 to 1.3).
+- The result is cached per game build, so later launches are instant. When a new version of this module changes the list format, the list is rebuilt once (this happened when updating from 1.0 to 1.3).
 - Developer test items and joke costume items, which can't be found in normal play, are left out.
 
 ### Summoned traders are not saved
 
 Summoned traders are not part of your save. After you load a game, summon one again.
 
-## Using it with tq-android-perf
+## Using it with Perf or Titan Quest Mods
 
-With [Titan Quest Mods](https://github.com/SlopPort/tq-android-mods) (Magisk module `tq_mods`) installed, that module carries tq-traders in its single injection (inside Perf when Perf is on, standalone otherwise), and this module's service stands back. That needs tq-traders 1.4.
-
-tq-traders works on its own, or as an add-on of tq-android-perf 2.3 or later. With tq-traders 1.3, tq-android-perf **2.3.1** is recommended: its menu places the add-on section higher, so the larger menu of 1.3 fits.
+Use tq-traders 1.4 with tq-android-perf **2.4** or newer. tq-traders works in three setups:
 
 - **Alone:** this module injects its own small copy of the menu (no engine patches) and shows a **Mods** button.
-- **With tq-android-perf 2.3+:** the traders, magic find and resets appear inside the **Perf** menu, below the engine patches. This module's own service stays idle.
+- **With tq-android-perf:** the traders, magic find and resets appear inside the **Perf** menu, below the engine patches. This module's own service stays idle.
+- **With [Titan Quest Mods](https://github.com/SlopPort/tq-android-mods)** (the mod loader, Magisk module `tq_mods`): that module starts tq-traders for you, inside the Perf menu when Perf is on, with its own **Mods** button otherwise. This module's own service stays idle. Titan Quest Mods works only on game build 3.0.5364.
 
-The reason is the game's anti-tamper protection: it kills the process after a second Frida injection, so only one injection per game process is possible. When both modules are installed, tq-android-perf injects this module's `tq-addon.js` together with its own patches, in its single injection.
+The reason is the game's anti-tamper protection: it kills the process after a second Frida injection, so only one injection per game process is possible. When tq-android-perf is installed (without Titan Quest Mods), it injects this module's `tq-addon.js` together with its own patches, in its single injection.
 
 Older versions of tq-android-perf (2.1.x) can't host add-ons. To avoid a second injection, tq-traders stays idle while any tq-android-perf is active and writes "update it to 2.3+" to its `status.log`. Update tq-android-perf, or disable it to use tq-traders alone.
 
