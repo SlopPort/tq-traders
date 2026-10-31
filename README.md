@@ -35,7 +35,7 @@ An unofficial, open-source Magisk module for Titan Quest on Android (single-play
 
 **Installation:**
 
-1. Download `tq-traders-1.3.zip` from the Releases page.
+1. Download `tq-traders-1.4.zip` from the Releases page.
 2. In Magisk, open **Modules → Install from storage**.
 3. Select the downloaded zip and reboot.
 4. Start Titan Quest.
@@ -166,6 +166,8 @@ The module ships no game data. The first time it runs on a game build, it builds
 Summoned traders are not part of your save. After you load a game, summon one again.
 
 ## Using it with tq-android-perf
+
+With [Titan Quest Mods](https://github.com/SlopPort/tq-android-mods) (Magisk module `tq_mods`) installed, that module carries tq-traders in its single injection (inside Perf when Perf is on, standalone otherwise), and this module's service stands back. That needs tq-traders 1.4.
 
 tq-traders works on its own, or as an add-on of tq-android-perf 2.3 or later. With tq-traders 1.3, tq-android-perf **2.3.1** is recommended: its menu places the add-on section higher, so the larger menu of 1.3 fits.
 

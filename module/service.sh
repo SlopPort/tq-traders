@@ -18,6 +18,9 @@ trap 'rm -f "$MODDIR/worker.pid"' EXIT
 perf_active() { [ -f "$PERF/service.sh" ] && [ ! -f "$PERF/disable" ] && [ ! -f "$PERF/remove" ] && [ ! -f "$PERF/paused" ]; }
 last=''
 while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ]; do
+ # tq_mods (Titan Quest Mods loader) injects this module's scripts in its own single injection: stand back.
+ M=/data/adb/modules/tq_mods
+ if [ -f "$M/service.sh" ] && [ ! -f "$M/disable" ] && [ ! -f "$M/remove" ]; then sleep 4; continue; fi
  if perf_active; then
   grep -q tq-addon.js "$PERF/service.sh" || echo 'tq-android-perf is too old to host add-ons: update it to 2.3+' > "$MODDIR/status.log"
   sleep 6; continue

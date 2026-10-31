@@ -20,7 +20,7 @@ ap.add_argument('--out', default=str(HERE.parent / 'module'))
 a = ap.parse_args()
 PERF = pathlib.Path(a.perf)
 OUT = pathlib.Path(a.out)
-VERSION, CODE = '1.3', 4
+VERSION, CODE = '1.4', 5
 
 perf = (PERF / 'module' / 'patch.js').read_text(encoding='utf-8')
 assert 'OVERLAY_ADDONS' in perf, 'tq-android-perf 2.3+ needed'
@@ -87,6 +87,9 @@ trap 'rm -f "$MODDIR/worker.pid"' EXIT
 perf_active() { [ -f "$PERF/service.sh" ] && [ ! -f "$PERF/disable" ] && [ ! -f "$PERF/remove" ] && [ ! -f "$PERF/paused" ]; }
 last=''
 while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ]; do
+ # tq_mods (Titan Quest Mods loader) injects this module's scripts in its own single injection: stand back.
+ M=/data/adb/modules/tq_mods
+ if [ -f "$M/service.sh" ] && [ ! -f "$M/disable" ] && [ ! -f "$M/remove" ]; then sleep 4; continue; fi
  if perf_active; then
   grep -q tq-addon.js "$PERF/service.sh" || echo 'tq-android-perf is too old to host add-ons: update it to 2.3+' > "$MODDIR/status.log"
   sleep 6; continue

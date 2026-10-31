@@ -1,9 +1,9 @@
-// tq-traders 1.3 (standalone): overlay core from tq-android-perf + the traders add-on.
+// tq-traders 1.4 (standalone): overlay core from tq-android-perf + the traders add-on.
 // Contains no game code: functions are resolved by exported name.
 const held=[];
 function clean(p){return p.and(ptr('0x00ffffffffffffff'));}
 const V2_CACHE = '/data/user/0/com.hg.titanquestultimate/cache/';
-const V2 = { status: { module: 'tq-traders 1.3', pid: Process.id, started: new Date().toISOString(), patches: {}, fingerprints: {} } };
+const V2 = { status: { module: 'tq-traders 1.4', pid: Process.id, started: new Date().toISOString(), patches: {}, fingerprints: {} } };
 function v2Save() { try { const f = new File(V2_CACHE + 'tq-v2-status.json', 'w'); f.write(JSON.stringify(V2.status)); f.close(); } catch (e) {} }
 function v2Set(name, obj) { V2.status.patches[name] = Object.assign(V2.status.patches[name] || {}, obj); v2Save(); }
 function v2Sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -659,7 +659,7 @@ function overlayInstall(b, states, opts) {
   }, 1000);
   return { stateBytes: size };
 }
-// tq-traders 1.3 add-on: traders (green / blue / purple) and respec. Contains no game code.
+// tq-traders 1.4 add-on: traders (green / blue / purple) and respec. Contains no game code.
 const TRADER_C = `
 /* Traders and respec add-on for the tq-android-perf overlay.
  *

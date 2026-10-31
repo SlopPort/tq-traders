@@ -1,4 +1,4 @@
-// tq-traders 1.3 add-on: traders (green / blue / purple) and respec. Contains no game code.
+// tq-traders 1.4 add-on: traders (green / blue / purple) and respec. Contains no game code.
 const TRADER_C = `
 /* Traders and respec add-on for the tq-android-perf overlay.
  *
